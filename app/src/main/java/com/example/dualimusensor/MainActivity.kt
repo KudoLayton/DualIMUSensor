@@ -5,21 +5,39 @@ import android.content.Context
 import android.content.Intent
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
-import android.widget.Spinner
+import androidx.appcompat.app.AppCompatActivity
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
-import java.lang.Math.min
+import java.lang.Exception
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
+
 private const val ACTION_USB_PERMISSION = "com.example.dualimusensor.USB_PERMISSION"
+
 class MainActivity : AppCompatActivity() {
-    var ports : Array<UsbSerialPort?> = arrayOfNulls(2);
+    private val executorList: Array<ExecutorService> = arrayOf(
+        Executors.newSingleThreadExecutor(),
+        Executors.newSingleThreadExecutor()
+    )
+
+    var ports : Array<UsbSerialPort?> = arrayOfNulls(2)
     var usbIoManager : Array<SerialInputOutputManager?> = arrayOfNulls(2)
+
+    class Port1Listener : SerialInputOutputManager.Listener{
+        override fun onRunError(e: Exception){
+
+        }
+        override fun onNewData(data: ByteArray){
+            Log.i("UART", "${String(data)}\n")
+        }
+    }
+    val port1Listener = Port1Listener()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -47,6 +65,10 @@ class MainActivity : AppCompatActivity() {
             usbIoManager[i] = SerialInputOutputManager(ports[i])
             Executors.newSingleThreadExecutor()
             Log.i("UART", "serial $i open Driver-${availableDrivers[i].device.productName}")
+        }
+        if(ports[0] != null) {
+            usbIoManager[0] = SerialInputOutputManager(ports[0], port1Listener)
+            executorList[0].submit(usbIoManager[0])
         }
     }
 
