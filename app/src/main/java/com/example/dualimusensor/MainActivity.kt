@@ -6,13 +6,18 @@ import android.content.Intent
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import android.os.Bundle
+import android.os.Environment
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
+import java.io.BufferedWriter
+import java.io.File
+import java.io.FileWriter
 import java.lang.Exception
+import java.nio.file.Paths
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -27,20 +32,31 @@ class MainActivity : AppCompatActivity() {
 
     var ports : Array<UsbSerialPort?> = arrayOfNulls(2)
     var usbIoManager : Array<SerialInputOutputManager?> = arrayOfNulls(2)
+    var files : Array<FileWriter?> = arrayOfNulls(2)
 
-    class Port1Listener : SerialInputOutputManager.Listener{
+    class PortListener(var fileList: Array<FileWriter?>,val portNum: Int) : SerialInputOutputManager.Listener{
         override fun onRunError(e: Exception){
 
         }
         override fun onNewData(data: ByteArray){
-            Log.i("UART", "${String(data)}\n")
+            //Log.i("UART", "${String(data)}\n")
         }
     }
-    val port1Listener = Port1Listener()
+    val port1Listener = PortListener(files, 0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        var file = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "text.txt")
+        var writer = file.writer()
+        if(file.canWrite()) {
+            writer.write("test")
+            Log.i("UART", "Write!")
+            writer.close()
+        }
+        getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        Log.i("UART", "${getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)}")
 
         //Find available driver
         val usbManager: UsbManager =  getSystemService(Context.USB_SERVICE) as UsbManager

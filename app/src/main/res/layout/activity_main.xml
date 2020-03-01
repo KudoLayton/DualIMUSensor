@@ -20,6 +20,20 @@
             android:id="@+id/port2Spinner"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
+
+        <EditText
+            android:id="@+id/fileNameText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ems="10"
+            android:inputType="textPersonName"
+            android:text="Name" />
+
+        <Switch
+            android:id="@+id/recordSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Switch" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
