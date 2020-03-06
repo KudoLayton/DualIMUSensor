@@ -13,14 +13,13 @@ import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
-import java.io.BufferedWriter
-import java.io.File
-import java.io.FileWriter
+import java.io.*
 import java.lang.Exception
+import java.nio.ByteBuffer
 import java.nio.file.Paths
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-
+import kotlin.experimental.xor
 
 private const val ACTION_USB_PERMISSION = "com.example.dualimusensor.USB_PERMISSION"
 
@@ -32,33 +31,63 @@ class MainActivity : AppCompatActivity() {
 
     var ports : Array<UsbSerialPort?> = arrayOfNulls(2)
     var usbIoManager : Array<SerialInputOutputManager?> = arrayOfNulls(2)
-    var files : Array<FileWriter?> = arrayOfNulls(2)
+    var files : Array<OutputStreamWriter?> = arrayOfNulls(2)
 
-    class PortListener(var fileList: Array<FileWriter?>,val portNum: Int) : SerialInputOutputManager.Listener{
+
+    class PortListener(var files: Array<OutputStreamWriter?>, val portNum: Int) : SerialInputOutputManager.Listener{
+        val e2boxChecker =
+            """\*-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*\r\n""".toRegex()
         override fun onRunError(e: Exception){
 
         }
         override fun onNewData(data: ByteArray){
-            //Log.i("UART", "${String(data)}\n")
+            val strData = String(data)
+            if(e2boxChecker.matchEntire(strData) != null) {
+                Log.i("UART", "${String(data)}\n")
+                try {
+                    files[portNum]?.write("${strData.split('*').last().trim()}\n")
+                } catch (e: IOException) { }
+            }else{
+                val wrapper = ByteBuffer.wrap(data)
+                var startIdx = 0
+                while(startIdx < data.size) {
+                    if (data[startIdx+0] == 0xff.toByte() && data[startIdx+1] == 0xff.toByte()) {
+                        val testChecksum =
+                            data.slice((startIdx+2)..(startIdx+44)).fold(0, { acc: Byte, other: Byte -> acc.xor(other) })
+                        if (testChecksum == data[startIdx+45]) {
+                            Log.i("UART", "Correct!")
+                            val counter = data[startIdx + 2].toUShort() + data[startIdx + 3].toUShort() * 256u
+                            val dataValue = (5..41 step 4).map{i -> wrapper.getFloat(i)}
+                            try {
+                                files[portNum]?.write("$counter ${dataValue[6]} ${dataValue[7]} ${dataValue[8]} ${dataValue[9]} ${dataValue[0]} ${dataValue[1]} ${dataValue[2]} ${dataValue[3]} ${dataValue[4]} ${dataValue[5]}\n")
+                            } catch (e: IOException) { }
+                        }
+                    }
+                    startIdx += 46
+                }
+            }
         }
     }
+
     val port1Listener = PortListener(files, 0)
+
+    fun checkSerialPort(){
+        //Find available driver
+        val usbManager: UsbManager =  getSystemService(Context.USB_SERVICE) as UsbManager
+        val availableDrivers : List<UsbSerialDriver> = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
+        if (availableDrivers.isEmpty()){
+            Log.i("UART", "Cannot find any serial devices")
+            return
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        var file = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "text.txt")
-        var writer = file.writer()
-        if(file.canWrite()) {
-            writer.write("test")
-            Log.i("UART", "Write!")
-            writer.close()
-        }
-        getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-        Log.i("UART", "${getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)}")
+        files[0] = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "port1Out.txt")
+            .writer()
 
-        //Find available driver
         val usbManager: UsbManager =  getSystemService(Context.USB_SERVICE) as UsbManager
         val availableDrivers : List<UsbSerialDriver> = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
         if (availableDrivers.isEmpty()){
@@ -95,6 +124,7 @@ class MainActivity : AppCompatActivity() {
         for (i in ports.indices){
             if(ports[i] != null) {
                 ports[i]?.close()
+                files[i]?.close()
                 Log.i("UART", "close serial $i")
             }
         }
