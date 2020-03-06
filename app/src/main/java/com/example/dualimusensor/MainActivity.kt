@@ -8,11 +8,13 @@ import android.hardware.usb.UsbManager
 import android.os.Bundle
 import android.os.Environment
 import android.util.Log
+import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
+import kotlinx.android.synthetic.main.activity_main.*
 import java.io.*
 import java.lang.Exception
 import java.nio.ByteBuffer
@@ -77,44 +79,54 @@ class MainActivity : AppCompatActivity() {
         val availableDrivers : List<UsbSerialDriver> = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
         if (availableDrivers.isEmpty()){
             Log.i("UART", "Cannot find any serial devices")
-            return
         }
+        val layoutList = arrayOf(port1Layout, port2Layout, port3Layout, port4Layout)
+        for (i in 0..3){
+            if (i < availableDrivers.size)
+                layoutList[i].visibility = View.VISIBLE
+            else
+                layoutList[i].visibility = View.GONE
+        }
+        swipe.isRefreshing = false
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        checkSerialPort()
+        swipe.setOnRefreshListener { checkSerialPort() }
+
         files[0] = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "port1Out.txt")
             .writer()
 
-        val usbManager: UsbManager =  getSystemService(Context.USB_SERVICE) as UsbManager
-        val availableDrivers : List<UsbSerialDriver> = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
-        if (availableDrivers.isEmpty()){
-            Log.i("UART", "Cannot find any serial devices")
-            return
-        }
-
-        for (i in 0..1.coerceAtMost(availableDrivers.size - 1)){
-            //Get a device connection, or get a permission of device
-            var connection : UsbDeviceConnection? = usbManager.openDevice(availableDrivers[i].device)
-            if(connection == null){
-                usbManager.requestPermission(availableDrivers[i].device, PendingIntent.getBroadcast(this, 0, Intent(ACTION_USB_PERMISSION), 0))
-                connection = usbManager.openDevice(availableDrivers[i].device)
-            }
-
-            //open ports
-            ports[i] = availableDrivers[i].ports[0]
-            ports[i]?.open(connection)
-            ports[i]?.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
-            usbIoManager[i] = SerialInputOutputManager(ports[i])
-            Executors.newSingleThreadExecutor()
-            Log.i("UART", "serial $i open Driver-${availableDrivers[i].device.productName}")
-        }
-        if(ports[0] != null) {
-            usbIoManager[0] = SerialInputOutputManager(ports[0], port1Listener)
-            executorList[0].submit(usbIoManager[0])
-        }
+//        val usbManager: UsbManager =  getSystemService(Context.USB_SERVICE) as UsbManager
+//        val availableDrivers : List<UsbSerialDriver> = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
+//        if (availableDrivers.isEmpty()){
+//            Log.i("UART", "Cannot find any serial devices")
+//            return
+//        }
+//
+//        for (i in 0..1.coerceAtMost(availableDrivers.size - 1)){
+//            //Get a device connection, or get a permission of device
+//            var connection : UsbDeviceConnection? = usbManager.openDevice(availableDrivers[i].device)
+//            if(connection == null){
+//                usbManager.requestPermission(availableDrivers[i].device, PendingIntent.getBroadcast(this, 0, Intent(ACTION_USB_PERMISSION), 0))
+//                connection = usbManager.openDevice(availableDrivers[i].device)
+//            }
+//
+//            //open ports
+//            ports[i] = availableDrivers[i].ports[0]
+//            ports[i]?.open(connection)
+//            ports[i]?.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+//            usbIoManager[i] = SerialInputOutputManager(ports[i])
+//            Executors.newSingleThreadExecutor()
+//            Log.i("UART", "serial $i open Driver-${availableDrivers[i].device.productName}")
+//        }
+//        if(ports[0] != null) {
+//            usbIoManager[0] = SerialInputOutputManager(ports[0], port1Listener)
+//            executorList[0].submit(usbIoManager[0])
+//        }
     }
 
     override fun onDestroy() {
