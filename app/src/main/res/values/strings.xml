@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">DualIMUSensor</string>
+    <string-array name="body_part">
+        <item>head</item>
+        <item>breast</item>
+        <item>belly</item>
+        <item>pelvis</item>
+    </string-array>
 </resources>
