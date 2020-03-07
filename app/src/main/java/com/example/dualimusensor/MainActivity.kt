@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.util.Log
 import android.view.View
+import android.widget.ArrayAdapter
 import androidx.appcompat.app.AppCompatActivity
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
@@ -28,12 +29,15 @@ private const val ACTION_USB_PERMISSION = "com.example.dualimusensor.USB_PERMISS
 class MainActivity : AppCompatActivity() {
     private val executorList: Array<ExecutorService> = arrayOf(
         Executors.newSingleThreadExecutor(),
+        Executors.newSingleThreadExecutor(),
+        Executors.newSingleThreadExecutor(),
         Executors.newSingleThreadExecutor()
     )
 
     var ports : Array<UsbSerialPort?> = arrayOfNulls(2)
     var usbIoManager : Array<SerialInputOutputManager?> = arrayOfNulls(2)
     var files : Array<OutputStreamWriter?> = arrayOfNulls(2)
+    var availableDrivers : List<UsbSerialDriver> = emptyList()
 
 
     class PortListener(var files: Array<OutputStreamWriter?>, val portNum: Int) : SerialInputOutputManager.Listener{
@@ -76,7 +80,7 @@ class MainActivity : AppCompatActivity() {
     fun checkSerialPort(){
         //Find available driver
         val usbManager: UsbManager =  getSystemService(Context.USB_SERVICE) as UsbManager
-        val availableDrivers : List<UsbSerialDriver> = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
+        availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
         if (availableDrivers.isEmpty()){
             Log.i("UART", "Cannot find any serial devices")
         }
@@ -88,6 +92,29 @@ class MainActivity : AppCompatActivity() {
                 layoutList[i].visibility = View.GONE
         }
         swipe.isRefreshing = false
+
+        for (i in 0..3.coerceAtMost(availableDrivers.size - 1)) {
+            if(!usbManager.hasPermission(availableDrivers[i].device))
+                usbManager.requestPermission(availableDrivers[i].device, PendingIntent.getBroadcast(this, 0, Intent(ACTION_USB_PERMISSION), 0))
+        }
+    }
+
+    fun connectSerialPort(){
+        val usbManager: UsbManager =  getSystemService(Context.USB_SERVICE) as UsbManager
+
+        if(availableDrivers.isEmpty())
+            return
+
+        swipe.isEnabled = false
+
+        for (i in 0..3.coerceAtMost(availableDrivers.size - 1)){
+            var connection : UsbDeviceConnection? = usbManager.openDevice(availableDrivers[i].device)
+            ports[i] = availableDrivers[i].ports[0]
+            ports[i]?.open(connection)
+            ports[i]?.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+            usbIoManager[i] = SerialInputOutputManager(ports[i])
+
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,6 +127,10 @@ class MainActivity : AppCompatActivity() {
         files[0] = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "port1Out.txt")
             .writer()
 
+        port1Part.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, resources.getStringArray(R.array.body_part))
+        port2Part.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, resources.getStringArray(R.array.body_part))
+        port3Part.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, resources.getStringArray(R.array.body_part))
+        port4Part.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, resources.getStringArray(R.array.body_part))
 //        val usbManager: UsbManager =  getSystemService(Context.USB_SERVICE) as UsbManager
 //        val availableDrivers : List<UsbSerialDriver> = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
 //        if (availableDrivers.isEmpty()){
