@@ -11,6 +11,8 @@ import android.os.Environment
 import android.util.Log
 import android.view.View
 import android.widget.ArrayAdapter
+import android.widget.Spinner
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.get
 import com.hoho.android.usbserial.driver.UsbSerialDriver
@@ -26,6 +28,8 @@ import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.experimental.xor
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 private const val ACTION_USB_PERMISSION = "com.example.dualimusensor.USB_PERMISSION"
 
@@ -37,28 +41,49 @@ class MainActivity : AppCompatActivity() {
         Executors.newSingleThreadExecutor()
     )
 
-    var ports : Array<UsbSerialPort?> = arrayOfNulls(2)
-    var usbIoManager : Array<SerialInputOutputManager?> = arrayOfNulls(2)
-    var files : Array<OutputStreamWriter?> = arrayOfNulls(2)
+    var ports : Array<com.hoho.android.usbserial.driver.UsbSerialPort?> = arrayOfNulls(4)
+    var usbIoManager : Array<SerialInputOutputManager?> = arrayOfNulls(4)
+    var files : Array<OutputStreamWriter?> = arrayOfNulls(4)
     var availableDrivers : List<UsbSerialDriver> = emptyList()
-    val portPartList = arrayOf(port1Part, port2Part, port3Part, port4Part)
+    val portPartList : Array<Spinner?> = arrayOfNulls(4)
+    val portAccList : Array<TextView?> = arrayOfNulls(4)
+    val portListener = arrayOf(PortListener(files, portAccList, 0),
+        PortListener(files, portAccList, 1),
+        PortListener(files, portAccList, 2),
+        PortListener(files, portAccList, 3)
+    )
     var isConnected = false
     var isRecorded = false
 
 
-    class PortListener(var files: Array<OutputStreamWriter?>, val portNum: Int) : SerialInputOutputManager.Listener{
+    class PortListener(var files: Array<OutputStreamWriter?>, var portAccList: Array<TextView?>, val portNum: Int) : SerialInputOutputManager.Listener{
         val e2boxChecker =
             """\*-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*\r\n""".toRegex()
+        var cnt = 0
         override fun onRunError(e: Exception){
 
         }
         override fun onNewData(data: ByteArray){
             val strData = String(data)
+            var lastTime = System.currentTimeMillis()
+            Log.i("UART", "${strData}\n")
             if(e2boxChecker.matchEntire(strData) != null) {
-                Log.i("UART", "${String(data)}\n")
                 try {
                     files[portNum]?.write("${strData.split('*').last().trim()}\n")
                 } catch (e: IOException) { }
+                //Log.i("UART", "delta Time: ${System.currentTimeMillis() - lastTime }")
+                lastTime = System.currentTimeMillis()
+
+                cnt = (++cnt).rem(10)
+                if (cnt == 0) {
+                    val out = strData.split('*').last().trim().split(',')
+                    var sum = 0f
+                    for (i in 4..6){
+                        sum += out[i].toFloat().pow(2)
+                    }
+                    portAccList[portNum]?.text = "${sqrt(sum)}"
+                }
+
             }else{
                 val wrapper = ByteBuffer.wrap(data)
                 var startIdx = 0
@@ -80,8 +105,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-
-    val port1Listener = PortListener(files, 0)
 
     fun checkSerialPort(){
         //Find available driver
@@ -113,14 +136,20 @@ class MainActivity : AppCompatActivity() {
 
         swipe.isEnabled = false
 
+        availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
         for (i in 0..3.coerceAtMost(availableDrivers.size - 1)){
             var connection : UsbDeviceConnection? = usbManager.openDevice(availableDrivers[i].device)
             ports[i] = availableDrivers[i].ports[0]
             ports[i]?.open(connection)
             ports[i]?.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
-            usbIoManager[i] = SerialInputOutputManager(ports[i])
-
+            usbIoManager[i] = SerialInputOutputManager(ports[i], portListener[i])
+            Log.i("UART", "PORT${i+1} connected: ${availableDrivers[i].device.productName}")
+            executorList[i].submit(usbIoManager[i])
         }
+        connectButton.isEnabled = false
+
+        if (availableDrivers.size > 0)
+            recordButton.isEnabled = true
     }
 
     fun startRecordFile(){
@@ -138,11 +167,11 @@ class MainActivity : AppCompatActivity() {
 
         val partArray = resources.getStringArray(R.array.body_part)
 
-        for (i in portPartList.indices) {
-            if (portPartList[i].visibility == View.GONE)
+        for (i in availableDrivers.indices) {
+            if (portPartList[i]?.visibility == View.GONE)
                 continue
             files[i] = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                "${commonFileName}_Port${i}_${portPartList[i].selectedItem}_$time.txt")
+                "${commonFileName}_Port${i}_${portPartList[i]?.selectedItem}_$time.txt")
                 .writer()
         }
     }
@@ -158,6 +187,16 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        portPartList[0] = port1Part
+        portPartList[1] = port2Part
+        portPartList[2] = port3Part
+        portPartList[3] = port4Part
+
+        portAccList[0] = port1Value
+        portAccList[1] = port2Value
+        portAccList[2] = port3Value
+        portAccList[3] = port4Value
+
         checkSerialPort()
         swipe.setOnRefreshListener { checkSerialPort() }
 
@@ -168,7 +207,7 @@ class MainActivity : AppCompatActivity() {
 
         connectButton.setOnClickListener{connectSerialPort()}
         recordButton.setOnClickListener{
-            isRecorded != isRecorded
+            isRecorded = !isRecorded
             if (isRecorded) {
                 startRecordFile()
                 recordButton.text = "Stop"
@@ -177,6 +216,7 @@ class MainActivity : AppCompatActivity() {
                 recordButton.text = "Rec"
             }
         }
+        
     }
 
     override fun onDestroy() {
