@@ -5,12 +5,14 @@ import android.content.Context
 import android.content.Intent
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
+import android.opengl.Visibility
 import android.os.Bundle
 import android.os.Environment
 import android.util.Log
 import android.view.View
 import android.widget.ArrayAdapter
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.get
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
@@ -20,6 +22,7 @@ import java.io.*
 import java.lang.Exception
 import java.nio.ByteBuffer
 import java.nio.file.Paths
+import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.experimental.xor
@@ -38,6 +41,9 @@ class MainActivity : AppCompatActivity() {
     var usbIoManager : Array<SerialInputOutputManager?> = arrayOfNulls(2)
     var files : Array<OutputStreamWriter?> = arrayOfNulls(2)
     var availableDrivers : List<UsbSerialDriver> = emptyList()
+    val portPartList = arrayOf(port1Part, port2Part, port3Part, port4Part)
+    var isConnected = false
+    var isRecorded = false
 
 
     class PortListener(var files: Array<OutputStreamWriter?>, val portNum: Int) : SerialInputOutputManager.Listener{
@@ -117,6 +123,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    fun startRecordFile(){
+        val name = nameText.text
+        val date = Date()
+        val calendar = GregorianCalendar()
+        calendar.time = date
+        val commonFileName = "${name}_${calendar.get(Calendar.YEAR.rem(100))}" +
+                "${calendar.get(Calendar.MONTH)}" +
+                "${calendar.get(Calendar.DAY_OF_MONTH)}"
+
+        val time = "${calendar.get(Calendar.HOUR_OF_DAY)}" +
+                "${calendar.get(Calendar.MINUTE)}" +
+                "${calendar.get(Calendar.SECOND)}"
+
+        val partArray = resources.getStringArray(R.array.body_part)
+
+        for (i in portPartList.indices) {
+            if (portPartList[i].visibility == View.GONE)
+                continue
+            files[i] = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
+                "${commonFileName}_Port${i}_${portPartList[i].selectedItem}_$time.txt")
+                .writer()
+        }
+    }
+
+    fun stopRecordFile() {
+        for (i in portPartList.indices) {
+            files[i]?.close()
+            files[i] = null
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -124,40 +161,22 @@ class MainActivity : AppCompatActivity() {
         checkSerialPort()
         swipe.setOnRefreshListener { checkSerialPort() }
 
-        files[0] = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "port1Out.txt")
-            .writer()
-
         port1Part.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, resources.getStringArray(R.array.body_part))
         port2Part.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, resources.getStringArray(R.array.body_part))
         port3Part.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, resources.getStringArray(R.array.body_part))
         port4Part.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, resources.getStringArray(R.array.body_part))
-//        val usbManager: UsbManager =  getSystemService(Context.USB_SERVICE) as UsbManager
-//        val availableDrivers : List<UsbSerialDriver> = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
-//        if (availableDrivers.isEmpty()){
-//            Log.i("UART", "Cannot find any serial devices")
-//            return
-//        }
-//
-//        for (i in 0..1.coerceAtMost(availableDrivers.size - 1)){
-//            //Get a device connection, or get a permission of device
-//            var connection : UsbDeviceConnection? = usbManager.openDevice(availableDrivers[i].device)
-//            if(connection == null){
-//                usbManager.requestPermission(availableDrivers[i].device, PendingIntent.getBroadcast(this, 0, Intent(ACTION_USB_PERMISSION), 0))
-//                connection = usbManager.openDevice(availableDrivers[i].device)
-//            }
-//
-//            //open ports
-//            ports[i] = availableDrivers[i].ports[0]
-//            ports[i]?.open(connection)
-//            ports[i]?.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
-//            usbIoManager[i] = SerialInputOutputManager(ports[i])
-//            Executors.newSingleThreadExecutor()
-//            Log.i("UART", "serial $i open Driver-${availableDrivers[i].device.productName}")
-//        }
-//        if(ports[0] != null) {
-//            usbIoManager[0] = SerialInputOutputManager(ports[0], port1Listener)
-//            executorList[0].submit(usbIoManager[0])
-//        }
+
+        connectButton.setOnClickListener{connectSerialPort()}
+        recordButton.setOnClickListener{
+            isRecorded != isRecorded
+            if (isRecorded) {
+                startRecordFile()
+                recordButton.text = "Stop"
+            }else {
+                stopRecordFile()
+                recordButton.text = "Rec"
+            }
+        }
     }
 
     override fun onDestroy() {
