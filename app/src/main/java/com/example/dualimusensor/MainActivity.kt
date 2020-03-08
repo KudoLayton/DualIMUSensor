@@ -27,6 +27,8 @@ import java.nio.file.Paths
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import kotlin.experimental.xor
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -34,12 +36,7 @@ import kotlin.math.sqrt
 private const val ACTION_USB_PERMISSION = "com.example.dualimusensor.USB_PERMISSION"
 
 class MainActivity : AppCompatActivity() {
-    private val executorList: Array<ExecutorService> = arrayOf(
-        Executors.newSingleThreadExecutor(),
-        Executors.newSingleThreadExecutor(),
-        Executors.newSingleThreadExecutor(),
-        Executors.newSingleThreadExecutor()
-    )
+    private var executor : ScheduledExecutorService? = null
 
     var ports : Array<com.hoho.android.usbserial.driver.UsbSerialPort?> = arrayOfNulls(4)
     var usbIoManager : Array<SerialInputOutputManager?> = arrayOfNulls(4)
@@ -66,7 +63,7 @@ class MainActivity : AppCompatActivity() {
         override fun onNewData(data: ByteArray){
             val strData = String(data)
             var lastTime = System.currentTimeMillis()
-            Log.i("UART", "${strData}\n")
+            Log.i("UART", "P${portNum + 1}: ${strData}\n")
             if(e2boxChecker.matchEntire(strData) != null) {
                 try {
                     files[portNum]?.write("${strData.split('*').last().trim()}\n")
@@ -74,7 +71,7 @@ class MainActivity : AppCompatActivity() {
                 //Log.i("UART", "delta Time: ${System.currentTimeMillis() - lastTime }")
                 lastTime = System.currentTimeMillis()
 
-                cnt = (++cnt).rem(10)
+                cnt = (++cnt).rem(50)
                 if (cnt == 0) {
                     val out = strData.split('*').last().trim().split(',')
                     var sum = 0f
@@ -137,6 +134,7 @@ class MainActivity : AppCompatActivity() {
         swipe.isEnabled = false
 
         availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
+        executor = Executors.newScheduledThreadPool(availableDrivers.size)
         for (i in 0..3.coerceAtMost(availableDrivers.size - 1)){
             var connection : UsbDeviceConnection? = usbManager.openDevice(availableDrivers[i].device)
             ports[i] = availableDrivers[i].ports[0]
@@ -144,7 +142,7 @@ class MainActivity : AppCompatActivity() {
             ports[i]?.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
             usbIoManager[i] = SerialInputOutputManager(ports[i], portListener[i])
             Log.i("UART", "PORT${i+1} connected: ${availableDrivers[i].device.productName}")
-            executorList[i].submit(usbIoManager[i])
+            executor?.scheduleAtFixedRate(usbIoManager[i], 0, 10, TimeUnit.MILLISECONDS)
         }
         connectButton.isEnabled = false
 
@@ -208,12 +206,14 @@ class MainActivity : AppCompatActivity() {
         connectButton.setOnClickListener{connectSerialPort()}
         recordButton.setOnClickListener{
             isRecorded = !isRecorded
-            if (isRecorded) {
-                startRecordFile()
-                recordButton.text = "Stop"
-            }else {
-                stopRecordFile()
-                recordButton.text = "Rec"
+            runOnUiThread {
+                if (isRecorded) {
+                    startRecordFile()
+                    recordButton.text = "Stop"
+                } else {
+                    stopRecordFile()
+                    recordButton.text = "Rec"
+                }
             }
         }
         
@@ -230,5 +230,6 @@ class MainActivity : AppCompatActivity() {
                 Log.i("UART", "close serial $i")
             }
         }
+        executor?.shutdown()
     }
 }
