@@ -1,14 +1,15 @@
 package com.example.dualimusensor
 
 import android.app.PendingIntent
-import android.content.Context
-import android.content.Intent
+import android.content.*
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
+import android.media.AudioManager
 import android.opengl.Visibility
 import android.os.Bundle
 import android.os.Environment
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Spinner
@@ -35,7 +36,11 @@ import kotlin.math.sqrt
 
 private const val ACTION_USB_PERMISSION = "com.example.dualimusensor.USB_PERMISSION"
 
-class MainActivity : AppCompatActivity() {
+interface RecordButtonCompatibility {
+    fun recordButton()
+}
+
+class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
     private var executor : ScheduledExecutorService? = null
 
     private var ports : Array<com.hoho.android.usbserial.driver.UsbSerialPort?> = arrayOfNulls(4)
@@ -50,6 +55,7 @@ class MainActivity : AppCompatActivity() {
         PortListener(files, portAccList, 3)
     )
     private var isRecorded = false
+    private val mediaButtonReceiver = EarphoneKeyEvent(this)
 
 
     class PortListener(var files: Array<OutputStreamWriter?>, var portAccList: Array<TextView?>, val portNum: Int) : SerialInputOutputManager.Listener{
@@ -77,7 +83,7 @@ class MainActivity : AppCompatActivity() {
                     for (i in 4..6){
                         sum += out[i].toFloat().pow(2)
                     }
-                    portAccList[portNum]?.text = "${sqrt(sum)}"
+                    portAccList[portNum].context. portAccList[portNum]?.text = "${sqrt(sum)}"
                 }
 
             }else{
@@ -99,6 +105,25 @@ class MainActivity : AppCompatActivity() {
                     startIdx += 46
                 }
             }
+        }
+    }
+
+    class EarphoneKeyEvent(private val record: RecordButtonCompatibility) : BroadcastReceiver(){
+
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val intentAction = intent?.action
+            if (Intent.ACTION_MEDIA_BUTTON != intentAction)
+                return
+
+            val event = intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+            event ?:return
+
+            val action = event.action
+
+            if (action == KeyEvent.ACTION_DOWN) {
+                record.recordButton()
+            }
+            abortBroadcast()
         }
     }
 
@@ -143,10 +168,17 @@ class MainActivity : AppCompatActivity() {
             Log.i("UART", "PORT${i+1} connected: ${availableDrivers[i].device.productName}")
             executor?.scheduleAtFixedRate(usbIoManager[i], 0, 10, TimeUnit.MILLISECONDS)
         }
-        connectButton.isEnabled = false
 
-        if (availableDrivers.isNotEmpty())
+        if (availableDrivers.isNotEmpty()) {
             recordButton.isEnabled = true
+            connectButton.isEnabled = false
+        } else {
+            swipe.isEnabled = true
+
+            val mediaFilter = IntentFilter(Intent.ACTION_MEDIA_BUTTON)
+            mediaFilter.priority = IntentFilter.SYSTEM_HIGH_PRIORITY + 1
+            registerReceiver(mediaButtonReceiver, mediaFilter)
+        }
     }
 
     private fun startRecordFile(){
@@ -180,6 +212,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    public override fun recordButton(){
+        isRecorded = !isRecorded
+        if (isRecorded) {
+            startRecordFile()
+            runOnUiThread{ recordButton.text = "Stop" }
+        } else {
+            stopRecordFile()
+            runOnUiThread{ recordButton.text = "Rec" }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -204,22 +247,13 @@ class MainActivity : AppCompatActivity() {
 
         connectButton.setOnClickListener{connectSerialPort()}
         recordButton.setOnClickListener{
-            isRecorded = !isRecorded
-            runOnUiThread {
-                if (isRecorded) {
-                    startRecordFile()
-                    recordButton.text = "Stop"
-                } else {
-                    stopRecordFile()
-                    recordButton.text = "Rec"
-                }
-            }
+            recordButton()
         }
-        
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterReceiver(mediaButtonReceiver)
         executor?.shutdown()
         //close all serial ports
         for (i in ports.indices){
