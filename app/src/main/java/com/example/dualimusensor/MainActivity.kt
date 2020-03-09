@@ -38,23 +38,22 @@ private const val ACTION_USB_PERMISSION = "com.example.dualimusensor.USB_PERMISS
 class MainActivity : AppCompatActivity() {
     private var executor : ScheduledExecutorService? = null
 
-    var ports : Array<com.hoho.android.usbserial.driver.UsbSerialPort?> = arrayOfNulls(4)
-    var usbIoManager : Array<SerialInputOutputManager?> = arrayOfNulls(4)
-    var files : Array<OutputStreamWriter?> = arrayOfNulls(4)
-    var availableDrivers : List<UsbSerialDriver> = emptyList()
-    val portPartList : Array<Spinner?> = arrayOfNulls(4)
-    val portAccList : Array<TextView?> = arrayOfNulls(4)
-    val portListener = arrayOf(PortListener(files, portAccList, 0),
+    private var ports : Array<com.hoho.android.usbserial.driver.UsbSerialPort?> = arrayOfNulls(4)
+    private var usbIoManager : Array<SerialInputOutputManager?> = arrayOfNulls(4)
+    private var files : Array<OutputStreamWriter?> = arrayOfNulls(4)
+    private var availableDrivers : List<UsbSerialDriver> = emptyList()
+    private val portPartList : Array<Spinner?> = arrayOfNulls(4)
+    private val portAccList : Array<TextView?> = arrayOfNulls(4)
+    private val portListener = arrayOf(PortListener(files, portAccList, 0),
         PortListener(files, portAccList, 1),
         PortListener(files, portAccList, 2),
         PortListener(files, portAccList, 3)
     )
-    var isConnected = false
-    var isRecorded = false
+    private var isRecorded = false
 
 
     class PortListener(var files: Array<OutputStreamWriter?>, var portAccList: Array<TextView?>, val portNum: Int) : SerialInputOutputManager.Listener{
-        val e2boxChecker =
+        private val e2boxChecker =
             """\*-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*\r\n""".toRegex()
         var cnt = 0
         override fun onRunError(e: Exception){
@@ -103,7 +102,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun checkSerialPort(){
+    private fun checkSerialPort(){
         //Find available driver
         val usbManager: UsbManager =  getSystemService(Context.USB_SERVICE) as UsbManager
         availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
@@ -125,7 +124,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun connectSerialPort(){
+    private fun connectSerialPort(){
         val usbManager: UsbManager =  getSystemService(Context.USB_SERVICE) as UsbManager
 
         if(availableDrivers.isEmpty())
@@ -146,11 +145,11 @@ class MainActivity : AppCompatActivity() {
         }
         connectButton.isEnabled = false
 
-        if (availableDrivers.size > 0)
+        if (availableDrivers.isNotEmpty())
             recordButton.isEnabled = true
     }
 
-    fun startRecordFile(){
+    private fun startRecordFile(){
         val name = nameText.text
         val date = Date()
         val calendar = GregorianCalendar()
@@ -174,7 +173,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun stopRecordFile() {
+    private fun stopRecordFile() {
         for (i in portPartList.indices) {
             files[i]?.close()
             files[i] = null
@@ -221,7 +220,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-
+        executor?.shutdown()
         //close all serial ports
         for (i in ports.indices){
             if(ports[i] != null) {
@@ -230,6 +229,5 @@ class MainActivity : AppCompatActivity() {
                 Log.i("UART", "close serial $i")
             }
         }
-        executor?.shutdown()
     }
 }
