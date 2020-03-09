@@ -16,6 +16,10 @@ import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.get
+import androidx.databinding.DataBindingUtil
+import androidx.databinding.ObservableField
+import androidx.databinding.ObservableFloat
+import com.example.dualimusensor.databinding.ActivityMainBinding
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
@@ -48,7 +52,12 @@ class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
     private var files : Array<OutputStreamWriter?> = arrayOfNulls(4)
     private var availableDrivers : List<UsbSerialDriver> = emptyList()
     private val portPartList : Array<Spinner?> = arrayOfNulls(4)
-    private val portAccList : Array<TextView?> = arrayOfNulls(4)
+    private val portAccList : Array<ObservableField<String>> = arrayOf(
+        ObservableField(),
+        ObservableField(),
+        ObservableField(),
+        ObservableField()
+    )
     private val portListener = arrayOf(PortListener(files, portAccList, 0),
         PortListener(files, portAccList, 1),
         PortListener(files, portAccList, 2),
@@ -57,8 +66,7 @@ class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
     private var isRecorded = false
     private val mediaButtonReceiver = EarphoneKeyEvent(this)
 
-
-    class PortListener(var files: Array<OutputStreamWriter?>, var portAccList: Array<TextView?>, val portNum: Int) : SerialInputOutputManager.Listener{
+    class PortListener(var files: Array<OutputStreamWriter?>, var portAccList: Array<ObservableField<String>>, val portNum: Int) : SerialInputOutputManager.Listener{
         private val e2boxChecker =
             """\*-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*,-?\d+.?\d*\r\n""".toRegex()
         var cnt = 0
@@ -83,7 +91,7 @@ class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
                     for (i in 4..6){
                         sum += out[i].toFloat().pow(2)
                     }
-                    portAccList[portNum].context. portAccList[portNum]?.text = "${sqrt(sum)}"
+                    portAccList[portNum].set("${sqrt(sum)}")
                 }
 
             }else{
@@ -227,15 +235,21 @@ class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        val binding = DataBindingUtil.setContentView<ActivityMainBinding>(this,
+        R.layout.activity_main)
+
         portPartList[0] = port1Part
         portPartList[1] = port2Part
         portPartList[2] = port3Part
         portPartList[3] = port4Part
 
-        portAccList[0] = port1Value
-        portAccList[1] = port2Value
-        portAccList[2] = port3Value
-        portAccList[3] = port4Value
+        binding.port1Acc = portAccList[0]
+        binding.port2Acc = portAccList[1]
+        binding.port3Acc = portAccList[2]
+        binding.port4Acc = portAccList[3]
+
+        for (portAcc in portAccList)
+            portAcc.set("0")
 
         checkSerialPort()
         swipe.setOnRefreshListener { checkSerialPort() }
