@@ -5,9 +5,12 @@ import android.content.*
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import android.media.AudioManager
+import android.media.session.MediaController
+import android.media.session.MediaSession
 import android.opengl.Visibility
 import android.os.Bundle
 import android.os.Environment
+import android.support.v4.media.session.MediaControllerCompat
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
@@ -19,6 +22,7 @@ import androidx.core.view.get
 import androidx.databinding.DataBindingUtil
 import androidx.databinding.ObservableField
 import androidx.databinding.ObservableFloat
+import android.support.v4.media.session.MediaSessionCompat
 import com.example.dualimusensor.databinding.ActivityMainBinding
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
@@ -28,6 +32,7 @@ import kotlinx.android.synthetic.main.activity_main.*
 import java.io.*
 import java.lang.Exception
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.file.Paths
 import java.util.*
 import java.util.concurrent.ExecutorService
@@ -65,6 +70,9 @@ class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
     )
     private var isRecorded = false
     private val mediaButtonReceiver = EarphoneKeyEvent(this)
+    private var mediaSession:MediaSessionCompat? = null
+    private var mediaControllerCompat : MediaControllerCompat? = null
+    private val mediaCallback = MediaButtonCallback(this)
 
     class PortListener(var files: Array<OutputStreamWriter?>, var portAccList: Array<ObservableField<String>>, val portNum: Int) : SerialInputOutputManager.Listener{
         private val e2boxChecker =
@@ -96,6 +104,7 @@ class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
 
             }else{
                 val wrapper = ByteBuffer.wrap(data)
+                wrapper.order(ByteOrder.LITTLE_ENDIAN)
                 var startIdx = 0
                 while(startIdx < data.size) {
                     if (data[startIdx+0] == 0xff.toByte() && data[startIdx+1] == 0xff.toByte()) {
@@ -108,6 +117,13 @@ class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
                             try {
                                 files[portNum]?.write("$counter ${dataValue[6]} ${dataValue[7]} ${dataValue[8]} ${dataValue[9]} ${dataValue[0]} ${dataValue[1]} ${dataValue[2]} ${dataValue[3]} ${dataValue[4]} ${dataValue[5]}\n")
                             } catch (e: IOException) { }
+                            cnt = (++cnt).rem(50)
+                            if (cnt == 0) {
+                                var sum = 0f
+                                for (i in 3..5)
+                                    sum += dataValue[i].pow(2)
+                                portAccList[portNum].set("${sqrt(sum)}")
+                            }
                         }
                     }
                     startIdx += 46
@@ -119,6 +135,7 @@ class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
     class EarphoneKeyEvent(private val record: RecordButtonCompatibility) : BroadcastReceiver(){
 
         override fun onReceive(context: Context?, intent: Intent?) {
+            Log.i("UARTFile", "Receive it!")
             val intentAction = intent?.action
             if (Intent.ACTION_MEDIA_BUTTON != intentAction)
                 return
@@ -132,6 +149,14 @@ class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
                 record.recordButton()
             }
             abortBroadcast()
+        }
+    }
+
+    class MediaButtonCallback(val recordButton: RecordButtonCompatibility) : MediaSessionCompat.Callback(){
+        override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
+            Log.i("UARTFile", "MediaButton!")
+            recordButton.recordButton()
+            return true
         }
     }
 
@@ -183,9 +208,9 @@ class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
         } else {
             swipe.isEnabled = true
 
-            val mediaFilter = IntentFilter(Intent.ACTION_MEDIA_BUTTON)
-            mediaFilter.priority = IntentFilter.SYSTEM_HIGH_PRIORITY + 1
-            registerReceiver(mediaButtonReceiver, mediaFilter)
+//            val mediaFilter = IntentFilter(Intent.ACTION_MEDIA_BUTTON)
+//            mediaFilter.priority = IntentFilter.SYSTEM_HIGH_PRIORITY + 1
+//            registerReceiver(mediaButtonReceiver, mediaFilter)
         }
     }
 
@@ -223,12 +248,19 @@ class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
     public override fun recordButton(){
         isRecorded = !isRecorded
         if (isRecorded) {
+            Log.i("UARTFile", "StartFileSave")
             startRecordFile()
             runOnUiThread{ recordButton.text = "Stop" }
         } else {
+            Log.i("UARTFile", "StopFileSave")
             stopRecordFile()
             runOnUiThread{ recordButton.text = "Rec" }
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Log.i("UARTFile", "I'm in background!")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -237,6 +269,13 @@ class MainActivity : AppCompatActivity(), RecordButtonCompatibility {
 
         val binding = DataBindingUtil.setContentView<ActivityMainBinding>(this,
         R.layout.activity_main)
+
+        mediaSession = MediaSessionCompat(this, "UART")
+        mediaSession?.setCallback(mediaCallback)
+        mediaSession?.isActive = true
+        mediaSession?.setMediaButtonReceiver(PendingIntent.getBroadcast(this, 0,
+        Intent(Intent.ACTION_MEDIA_BUTTON), PendingIntent.FLAG_ONE_SHOT))
+        registerReceiver(mediaButtonReceiver, IntentFilter(Intent.ACTION_MEDIA_BUTTON))
 
         portPartList[0] = port1Part
         portPartList[1] = port2Part

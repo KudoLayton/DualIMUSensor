@@ -5,5 +5,11 @@
         <item>breast</item>
         <item>belly</item>
         <item>pelvis</item>
+<!--        <item>walk</item>
+        <item>jog</item>
+        <item>stump</item>
+        <item>gallop</item>
+        <item>lope</item>
+        <item>sprint</item>-->
     </string-array>
 </resources>
